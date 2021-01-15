@@ -1,0 +1,32 @@
+{
+   "architecture": {
+   				"type": "DeepLabV3+",
+   				"outStride": 16,
+   				"sync_bn": 0,
+   				"freeze_bn": 0
+   			 },
+   "lossType": "crossEntropy",
+   "optimizer": "SGD",
+   "imageTransform": {
+                        "method": "normalize",
+                        "parameters":{
+                        		      "mean":[0,0,0],
+                                              "std":[1,1,1]
+                                     }
+                      },
+   "hyperparameters": {
+                         "lr" : 0.01,
+                         "lrScheduler": "poly",
+			 "weightDecay": 0.0002,
+ 			 "momentum": 0.7,
+                         "nesterov": 0,
+			 "batchSize": 8,
+                         "maxEpochs": 50
+                      },
+   "initWeights": {"method": "classBalanced"},
+   "resumeFromCheckpoint": "path/to/checkPointName",
+   "fineTune": 0,
+   "logFile": "logFileName.txt",
+   "modelSavePath": "path/to/outDir"
+}   
+        
