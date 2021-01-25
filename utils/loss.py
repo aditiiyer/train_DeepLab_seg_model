@@ -9,9 +9,9 @@ class SegmentationLosses(object):
         self.batch_average = batch_average
         self.cuda = cuda
 
-    def build_loss(self, mode='ce'):
-        """Choices: ['ce' or 'focal']"""
-        if mode == 'ce':
+    def build_loss(self, mode='crossEntropy'):
+        """Choices: ['crossEntropy' or 'focal']"""
+        if mode == 'crossEntropy':
             return self.CrossEntropyLoss
         elif mode == 'focal':
             return self.FocalLoss
