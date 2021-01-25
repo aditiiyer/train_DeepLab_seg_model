@@ -34,11 +34,24 @@ class Trainer(object):
         if torch.cuda.device_count() and torch.cuda.is_available():
             print('Using GPU...')
             args["cuda"] = True
-            print('GPU device count: ', torch.cuda.device_count())
-            device = torch.device("cuda:0")
+            deviceCount = torch.cuda.device_count()
+            print('GPU device count: ', deviceCount)
         else:
             print('using CPU...')
             args["cuda"] = False
+
+        # Use default args where missing
+        defPars = {'fineTune': False, 'resumeFromCheckpoint': None, 'validate': True,
+                   'evalInterval': 1}
+        defHyperpars = {'startEpoch': 0}
+        for key in defPars.keys():
+            if not key in args.keys():
+                args[key] = defPars[key]
+        for key in defHyperpars.keys():
+            if not key in hyperpars.keys():
+                hyperpars[key] = defHyperpars[key]
+
+        args["hyperparameters"] = hyperpars
         self.args = args
 
         # Define Saver
@@ -49,7 +62,7 @@ class Trainer(object):
         self.summary = TensorboardSummary(self.saver.experiment_dir)
         self.writer = self.summary.create_summary()
 
-        # Define Dataloader
+        # Define Dataloaders
         kwargs = {'num_workers': 1, 'pin_memory': True}
         train_set = customData(self.args, split='Train')
         self.train_loader = DataLoader(train_set, batch_size=hyperpars["batchSize"], shuffle=True, drop_last=True,
@@ -86,7 +99,6 @@ class Trainer(object):
         # Initialize weights
         print('Initializing weights...')
         initWeights = args["initWeights"]
-        print(initWeights["method"])
         if initWeights["method"] == "classBalanced":
             # Use class balanced weights
             print('Using class-balanced weights.')
@@ -111,46 +123,42 @@ class Trainer(object):
                                       hyperpars["maxEpochs"], len(self.train_loader))
 
         # Use GPU(s) if available
-        if torch.cuda.device_count() and torch.cuda.is_available():
-            print('Using GPU...')
-            self.cuda = True
-            print('GPU device count: ', torch.cuda.device_count())
-            device = torch.device("cuda:0")
-
-            self.model = torch.nn.DataParallel(self.model, device_ids=self.args.gpu_ids)
+        if args["cuda"]:
+            self.model = torch.nn.DataParallel(self.model, list(range(deviceCount)))
             patch_replication_callback(self.model)
             self.model = self.model.cuda()
 
         # Resume from previous checkpoint
         self.best_pred = 0.0
-        if args.resume is not None:
-            if not os.path.isfile(args.resume):
+        if args["resumeFromCheckpoint"] is not None:
+            if not os.path.isfile(args["resumeFromCheckpoint"]):
                 raise RuntimeError("=> no checkpoint found at '{}'".format(args.resume))
             checkpoint = torch.load(args.resume)
-            args.start_epoch = checkpoint['epoch']
-            if self.cuda:
+            args["startEpoch"] = checkpoint['epoch']
+            if args["cuda"]:
                 self.model.module.load_state_dict(checkpoint['state_dict'])
             else:
                 self.model.load_state_dict(checkpoint['state_dict'])
             # For fine-tuning:
-            if not args.ft:
+            if not args["fineTune"]:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
             self.best_pred = checkpoint['best_pred']
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
 
         # Clear start epoch if fine-tuning
-        if args.ft:
-            args.start_epoch = 0
+        if args["fineTune"]:
+            args["startEpoch"] = 0
 
     def training(self, epoch):
+        args = self["args"]
         train_loss = 0.0
         self.model.train()
         tbar = tqdm(self.train_loader)
         num_img_tr = len(self.train_loader)
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
-            if self.args.cuda:
+            if args["cuda"]:
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
@@ -162,13 +170,13 @@ class Trainer(object):
             tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
             self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
-            # Show 10 * 3 inference results each epoch
+            # Show inference results
             if i % (num_img_tr // 10) == 0:
                 global_step = i + num_img_tr * epoch
                 self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
-        print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
+        print('[Epoch: %d, numImages: %5d]' % (epoch, i * hyperpars["batchSize"] + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
         if self.args.no_val:
@@ -257,8 +265,6 @@ def loadJSONConfig(trainingParamFile):
 
 
 def main():
-    print('In main...')
-
     trainingParamFile = sys.argv[1]
     modelConfigFile = sys.argv[2]
     inputH5Dir = sys.argv[3]
@@ -272,16 +278,17 @@ def main():
     # Train model
     torch.manual_seed(1)
     trainer = Trainer(trainParams, modelConfig, inputH5Dir)
-    print('Starting Epoch:', trainer.args.start_epoch)
-    print('Total Epoches:', trainer.args.epochs)
-    for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
+    hyperpars = trainer.args["hyperparameters"]
+    evalInterval = trainer.args["evalInterval"]
+    print('Starting Epoch:', hyperpars["startEpoch"])
+    print('Total Epoches:', hyperpars["maxEpochs"])
+    for epoch in range(hyperpars["startEpoch"], hyperpars["maxEpochs"]):
         trainer.training(epoch)
-        if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
-            trainer.validation(epoch)
+    if not trainer.args["validate"] and epoch % evalInterval == (evalInterval - 1):
+        trainer.validation(epoch)
 
     trainer.writer.close()
 
 
 # if __name__ == "__main__":
-print('Running default (main)')
 main()
