@@ -1,8 +1,9 @@
-import torch
 import random
-import numpy as np
 
+import numpy as np
+import torch
 from PIL import Image, ImageOps, ImageFilter
+
 
 class Normalize(object):
     """Normalize a tensor image with mean and standard deviation.
@@ -10,21 +11,23 @@ class Normalize(object):
         mean (tuple): means for each channel.
         std (tuple): standard deviations for each channel.
     """
+
     def __init__(self, mean=(0., 0., 0.), std=(1., 1., 1.)):
         self.mean = mean
         self.std = std
 
     def __call__(self, sample):
         img = sample['image']
-        mask = sample['label']
         img = np.array(img).astype(np.float32)
-        mask = np.array(mask).astype(np.float32)
         img /= 255.0
         img -= self.mean
         img /= self.std
+        mask = sample['label']
+        mask = np.array(mask).astype(np.float32)
 
-        return {'image': img,
-                'label': mask}
+        sample['image'] = img
+        sample['label'] = mask
+        return sample
 
 
 class ToTensor(object):
@@ -35,16 +38,15 @@ class ToTensor(object):
         # numpy image: H x W x C
         # torch image: C X H X W
         img = sample['image']
-        mask = sample['label']
         img = np.array(img).astype(np.float32).transpose((2, 0, 1))
-        mask = np.array(mask).astype(np.float32)
-
         img = torch.from_numpy(img).float()
+        mask = sample['label']
+        mask = np.array(mask).astype(np.float32)
         mask = torch.from_numpy(mask).float()
 
-        return {'image': img,
-                'label': mask}
-
+        sample['image'] = img
+        sample['label'] = mask
+        return sample
 
 class RandomHorizontalFlip(object):
     def __call__(self, sample):
@@ -54,8 +56,9 @@ class RandomHorizontalFlip(object):
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
 
-        return {'image': img,
-                'label': mask}
+        sample['image'] = img
+        sample['label'] = mask
+        return sample
 
 
 class RandomRotate(object):
@@ -64,38 +67,36 @@ class RandomRotate(object):
 
     def __call__(self, sample):
         img = sample['image']
-        mask = sample['label']
-        rotate_degree = random.uniform(-1*self.degree, self.degree)
+        rotate_degree = random.uniform(-1 * self.degree, self.degree)
         img = img.rotate(rotate_degree, Image.BILINEAR)
+        mask = sample['label']
         mask = mask.rotate(rotate_degree, Image.NEAREST)
 
-        return {'image': img,
-                'label': mask}
-
+        sample['image'] = img
+        sample['label'] = mask
+        return sample
 
 class RandomGaussianBlur(object):
     def __call__(self, sample):
         img = sample['image']
-        mask = sample['label']
         if random.random() < 0.5:
             img = img.filter(ImageFilter.GaussianBlur(
                 radius=random.random()))
 
-        return {'image': img,
-                'label': mask}
-
+        sample['image'] = img
+        return sample
 
 class RandomScaleCrop(object):
-    def __init__(self, base_size, crop_size, fill=0):
-        self.base_size = base_size
-        self.crop_size = crop_size
+    def __init__(self, baseSize, cropSize, fill=0):
+        self.baseSize = baseSize
+        self.cropSize = cropSize
         self.fill = fill
 
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
         # random scale (short edge)
-        short_size = random.randint(int(self.base_size * 0.5), int(self.base_size * 2.0))
+        short_size = random.randint(int(self.baseSize * 0.5), int(self.baseSize * 2.0))
         w, h = img.size
         if h > w:
             ow = short_size
@@ -106,47 +107,48 @@ class RandomScaleCrop(object):
         img = img.resize((ow, oh), Image.BILINEAR)
         mask = mask.resize((ow, oh), Image.NEAREST)
         # pad crop
-        if short_size < self.crop_size:
-            padh = self.crop_size - oh if oh < self.crop_size else 0
-            padw = self.crop_size - ow if ow < self.crop_size else 0
+        if short_size < self.cropSize:
+            padh = self.cropSize - oh if oh < self.cropSize else 0
+            padw = self.cropSize - ow if ow < self.cropSize else 0
             img = ImageOps.expand(img, border=(0, 0, padw, padh), fill=0)
             mask = ImageOps.expand(mask, border=(0, 0, padw, padh), fill=self.fill)
         # random crop crop_size
         w, h = img.size
-        x1 = random.randint(0, w - self.crop_size)
-        y1 = random.randint(0, h - self.crop_size)
-        img = img.crop((x1, y1, x1 + self.crop_size, y1 + self.crop_size))
-        mask = mask.crop((x1, y1, x1 + self.crop_size, y1 + self.crop_size))
+        x1 = random.randint(0, w - self.cropSize)
+        y1 = random.randint(0, h - self.cropSize)
+        img = img.crop((x1, y1, x1 + self.cropSize, y1 + self.cropSize))
+        mask = mask.crop((x1, y1, x1 + self.cropSize, y1 + self.cropSize))
 
-        return {'image': img,
-                'label': mask}
-
+        sample['img'] = img
+        sample['label'] = mask
+        return sample
 
 class FixScaleCrop(object):
-    def __init__(self, crop_size):
-        self.crop_size = crop_size
+    def __init__(self, cropSize):
+        self.cropSize = cropSize
 
     def __call__(self, sample):
         img = sample['image']
         mask = sample['label']
         w, h = img.size
         if w > h:
-            oh = self.crop_size
+            oh = self.cropSize
             ow = int(1.0 * w * oh / h)
         else:
-            ow = self.crop_size
+            ow = self.cropSize
             oh = int(1.0 * h * ow / w)
         img = img.resize((ow, oh), Image.BILINEAR)
         mask = mask.resize((ow, oh), Image.NEAREST)
         # center crop
         w, h = img.size
-        x1 = int(round((w - self.crop_size) / 2.))
-        y1 = int(round((h - self.crop_size) / 2.))
-        img = img.crop((x1, y1, x1 + self.crop_size, y1 + self.crop_size))
-        mask = mask.crop((x1, y1, x1 + self.crop_size, y1 + self.crop_size))
+        x1 = int(round((w - self.cropSize) / 2.))
+        y1 = int(round((h - self.cropSize) / 2.))
+        img = img.crop((x1, y1, x1 + self.cropSize, y1 + self.cropSize))
+        mask = mask.crop((x1, y1, x1 + self.cropSize, y1 + self.cropSize))
 
-        return {'image': img,
-                'label': mask}
+        sample['image'] = img
+        sample['label'] = mask
+        return sample
 
 class FixedResize(object):
     def __init__(self, size):
@@ -154,12 +156,10 @@ class FixedResize(object):
 
     def __call__(self, sample):
         img = sample['image']
-        mask = sample['label']
-
-        assert img.size == mask.size
-
         img = img.resize(self.size, Image.BILINEAR)
+        mask = sample['label']
         mask = mask.resize(self.size, Image.NEAREST)
 
-        return {'image': img,
-                'label': mask}
+        sample['image'] = img
+        sample['label'] = mask
+        return sample
