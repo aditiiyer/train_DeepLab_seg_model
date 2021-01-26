@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,17 +9,16 @@ from modeling.backbone import build_backbone
 
 class DeepLab(nn.Module):
     def __init__(self, backbone='resnet', output_stride=16, num_classes=21,
-                 sync_bn=True, freeze_bn=False):
+                 sync_bn=True, freeze_bn=False, model_path=os.getcwd()):
         super(DeepLab, self).__init__()
-        if backbone == 'drn':
-            output_stride = 8
+        self.model_path = model_path
 
         if sync_bn == True:
             BatchNorm = SynchronizedBatchNorm2d
         else:
             BatchNorm = nn.BatchNorm2d
 
-        self.backbone = build_backbone(backbone, output_stride, BatchNorm)
+        self.backbone = build_backbone(backbone, output_stride, BatchNorm, model_path)
         self.aspp = build_aspp(backbone, output_stride, BatchNorm)
         self.decoder = build_decoder(num_classes, backbone, BatchNorm)
 
