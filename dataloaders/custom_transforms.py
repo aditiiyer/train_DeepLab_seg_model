@@ -119,7 +119,7 @@ class RandomScaleCrop(object):
         img = img.crop((x1, y1, x1 + self.cropSize, y1 + self.cropSize))
         mask = mask.crop((x1, y1, x1 + self.cropSize, y1 + self.cropSize))
 
-        sample['img'] = img
+        sample['image'] = img
         sample['label'] = mask
         return sample
 
