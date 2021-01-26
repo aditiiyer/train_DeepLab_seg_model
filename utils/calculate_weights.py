@@ -23,6 +23,7 @@ def calculate_weights_labels(inputH5Path, dataloader, num_classes):
         class_weights.append(class_weight)
     ret = np.array(class_weights)
     classes_weights_path = os.path.join(inputH5Path,'classWeights.npy')
+    print('Saving weights to' + classes_weights_path)
     np.save(classes_weights_path, ret)
 
     return ret
