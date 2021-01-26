@@ -1,13 +1,8 @@
-from modeling.backbone import resnet, xception, drn, mobilenet
+from modeling.backbone import resnet
 
-def build_backbone(backbone, output_stride, BatchNorm):
+def build_backbone(backbone, output_stride, BatchNorm, model_path):
     if backbone == 'resnet':
-        return resnet.ResNet101(output_stride, BatchNorm)
-    elif backbone == 'xception':
-        return xception.AlignedXception(output_stride, BatchNorm)
-    elif backbone == 'drn':
-        return drn.drn_d_54(BatchNorm)
-    elif backbone == 'mobilenet':
-        return mobilenet.MobileNetV2(output_stride, BatchNorm)
+        print(model_path)
+        return resnet.ResNet101(output_stride, BatchNorm, model_path)
     else:
         raise NotImplementedError
