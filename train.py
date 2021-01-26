@@ -75,7 +75,6 @@ class Trainer(object):
                                       **kwargs)
 
         # Define network
-        print(archpars)
         model = DeepLab(num_classes=args["nclass"],
                         backbone='resnet',
                         output_stride=archpars["outStride"],
@@ -104,10 +103,12 @@ class Trainer(object):
             print('Using class-balanced weights.')
             class_weights_path = os.path.join(inputH5Path, 'classWeights.npy')
             if os.path.isfile(class_weights_path):
+                print('reading weights from' + class_weights_path)
                 weight = np.load(class_weights_path)
             else:
                 weight = calculate_weights_labels(inputH5Path, self.train_loader, args["nclass"])
-                weight = torch.from_numpy(weight.astype(np.float32))
+                np.save(class_weights_path, weight)
+            weight = torch.from_numpy(weight.astype(np.float32))
         else:
             weight = None
 
@@ -151,7 +152,8 @@ class Trainer(object):
             args["startEpoch"] = 0
 
     def training(self, epoch):
-        args = self["args"]
+        args = self.args
+        hyperpars = args["hyperparameters"]
         train_loss = 0.0
         self.model.train()
         tbar = tqdm(self.train_loader)
@@ -173,13 +175,13 @@ class Trainer(object):
             # Show inference results
             if i % (num_img_tr // 10) == 0:
                 global_step = i + num_img_tr * epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
+                self.summary.visualize_image(self.writer, args, image, target, output, global_step)
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * hyperpars["batchSize"] + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
-        if self.args.no_val:
+        if not args["validate"]:
             # save checkpoint every epoch
             is_best = False
             self.saver.save_checkpoint({
